@@ -1,4 +1,4 @@
-# PPO-implementation
+# Implementation Details
 
 This is a  keras-Tensorflow bases minimilistic implementation of the RL algorithm PPO (Proximal Policy Optimization) on:
  
@@ -33,6 +33,12 @@ Hence normalization of GAE values is used in time-dpendent reward environments o
 4.)Soft-Update of old network:
 
 The weights of the network providing the old policy undergo soft update with alpha= 0.1
+
+5.)Customization of rewards:
+     
+     a.)Breakout: additonal reward of -1 is given for dropping the ball , this as boosted the initial stages of training significantly
+     b.)SuperMarioBros: additional reward of +1 for collecting coins are added linerally to the total reward to promote more exploration and coin collection
+     c.)LunarLander: crash landing is penalized by a reward of -5 , this has significantly imporved the later stages of training ie: the soft landing
 
 
 References:
