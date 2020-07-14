@@ -1,10 +1,10 @@
 # PPO-implementation
 
-This is a  keras-Tensorflow bases minimilistic implementation of the RL algorithm PPO (Proximal Policy Optimization) on
-  
-  a.)Atari games  Breakout and Pong 
-  b.)Nintendo's SuperMarioBros 
-  c.)Classic control Environment LunarLander.
+This is a  keras-Tensorflow bases minimilistic implementation of the RL algorithm PPO (Proximal Policy Optimization) on:
+ 
+     a.)Atari games  Breakout and Pong 
+     b.)Nintendo's SuperMarioBros 
+     c.)Classic control Environment LunarLander.
 
 Features:
 
@@ -12,9 +12,9 @@ Features:
 1.) The atari games use the no-frameskip environment and implement frameskipping manually. All the frame skipping techniquies used by openai have been implemented minimilistically:
     (step function)
     
-    a.) non -sticky action : repeating the same action for a set of four frames 
-    b. sticky-action : repating the same  action for last three of the four frames while chossing the previous action for the first frame with a probability of 0.25
-    c.) the pixel wise maximum is taken for the last two frames to prevent the dissaperance of ball due to flickering
+   a.) non -sticky action : repeating the same action for a set of four frames 
+   b. sticky-action : repating the same  action for last three of the four frames while chossing the previous action for the first frame with a probability of 0.25
+   c.) the pixel wise maximum is taken for the last two frames to prevent the dissaperance of ball due to flickering
     
 
 2.)No masking:
