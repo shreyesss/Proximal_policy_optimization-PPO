@@ -2,8 +2,8 @@
 
 This is a  keras-Tensorflow bases minimilistic implementation of the RL algorithm PPO (Proximal Policy Optimization) on:
  
-     a.)Atari games  Breakout and Pong 
-     b.)Nintendo's SuperMarioBros 
+     a.)Atari games - Breakout and Pong 
+     b.)Nintendo - SuperMarioBros 
      c.)Classic control Environment LunarLander.
 
 Features:
@@ -52,6 +52,12 @@ The weights of the network providing the old policy undergo soft update with alp
                               5           A
                               6           left
                               
+      c.)LunarLander        action     meaning
+                               0         None
+                               1         Fire
+                               2         Left
+                               3         Right
+                               
                           
                       
 
@@ -73,10 +79,10 @@ https://arxiv.org/pdf/1707.06347.pdf
 
 # REQUIREMENTS
   
-  1.) tensorflow-1.14
-  2.) python3
-  3.) openai-gym
-  4.) gym-super-mario-bros-7.3.2
+     1.) tensorflow-1.14
+     2.) python3
+     3.) openai-gym
+     4.) gym-super-mario-bros-7.3.2
   
 
 
