@@ -12,7 +12,7 @@ from nes_py.wrappers import JoypadSpace
 tf.enable_eager_execution()
 
 EPISODE, running_score, G_t_step, max_score = 0,0,0,0
-class PPO_atari:
+class PPO_SuperMArioBros:
         def __init__(self, game,level, n_workers, NMaxEp):
             self.game_name = ('SuperMarioBros-'+str(game)+'-'+str(level)+'-v1')
             self.env = JoypadSpace(gym_super_mario_bros.make(self.game_name), SIMPLE_MOVEMENT)
@@ -396,7 +396,7 @@ class PPO_atari:
 
 
 
-agent = PPO_atari (game = 1, level = 1,n_workers=16 , NMaxEp=20000)
+agent = PPO_SuperMarioBros(game = 1, level = 1,n_workers=16 , NMaxEp=20000)
 agent.train()
 #agent.test()
 
