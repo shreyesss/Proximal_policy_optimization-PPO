@@ -35,6 +35,25 @@ The weights of the network providing the old policy undergo soft update with alp
      a.)Breakout: additonal reward of -1 is given for dropping the ball , this as boosted the initial stages of training significantly
      b.)SuperMarioBros: additional reward of +1 for collecting coins are added linerally to the total reward to promote more exploration and coin collection
      c.)LunarLander: crash landing is penalized by a reward of -5 , this has significantly imporved the later stages of training ie: the soft landing
+ 
+ 6.)Customization of action_space:
+      
+      a.)Breakout and Pong : action     meaning
+                              0           fire/none
+                              1           right
+                              2           left
+                      
+      b.)SupeMarioBros :    action     meaning
+                              0           none
+                              1           right    
+                              2           right A
+                              3           right B
+                              4           right A B
+                              5           A
+                              6           left
+                              
+                          
+                      
 
 
 # References:
@@ -50,6 +69,16 @@ https://arxiv.org/pdf/1506.02438.pdf
 PPO :
 
 https://arxiv.org/pdf/1707.06347.pdf
+
+
+# REQUIREMENTS
+  
+  1.) tensorflow-1.14
+  2.) python3
+  3.) openai-gym
+  4.) gym-super-mario-bros-7.3.2
+  
+
 
 
 
