@@ -1,6 +1,10 @@
 # PPO-implementation
 
-This is a  keras-Tensorflow bases minimilistic implementation of the RL algorithm PPO (Proximal Policy Optimization) on Atari games  Breakout and Pong , Nintendo's SuperMarioBros and Classic control Environment LunarLander.
+This is a  keras-Tensorflow bases minimilistic implementation of the RL algorithm PPO (Proximal Policy Optimization) on
+  
+  a.)Atari games  Breakout and Pong 
+  b.)Nintendo's SuperMarioBros 
+  c.)Classic control Environment LunarLander.
 
 Features:
 
