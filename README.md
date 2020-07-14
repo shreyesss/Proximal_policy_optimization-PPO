@@ -17,10 +17,10 @@ Features:
    c.) the pixel wise maximum is taken for the last two frames to prevent the dissaperance of ball due to flickering
     
 
-2.)No masking:
+2.)Advangge calculation:
    (GAE_and_Targetvalues function)
-   
-   As a substitute to calculating GAE using masking I update the model at the end of each 'Life' in the game or after a fix number of time_steps(Horizon)
+       a.) GAE(generalized advantage estimate) is calculated using forward view bootstrapping with different optimum forward steps for different games
+       As a substitute to calculating GAE using masking I update the model at the end of each 'Life' in the game or after a fix number of time_steps(Horizon)
  
 
 3.)No Normalization of GAE values:
