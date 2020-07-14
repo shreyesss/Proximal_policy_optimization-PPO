@@ -107,7 +107,7 @@ class PPO_breakout:
 
             model.compile(optimizer=k.optimizers.Adam(lr=self.lr),
                           loss=[self.policy_loss(action,old_prediction),self.value_loss()],
-                          loss_weights=[1, 0.5])
+                          loss_weights=[1, 1])
 
             model.summary()
 
