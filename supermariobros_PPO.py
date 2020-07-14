@@ -1,0 +1,417 @@
+import tensorflow as tf
+from tensorflow import keras as k
+import numpy as np
+import threading
+import cv2
+import random
+import time
+import gym_super_mario_bros
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
+from nes_py.wrappers import JoypadSpace
+
+tf.enable_eager_execution()
+
+EPISODE, running_score, G_t_step, max_score = 0,0,0,0
+class PPO_atari:
+        def __init__(self, game,level, n_workers, NMaxEp):
+            self.game_name = ('SuperMarioBros-'+str(game)+'-'+str(level)+'-v1')
+            self.env = JoypadSpace(gym_super_mario_bros.make(self.game_name), SIMPLE_MOVEMENT)
+            self.action_space = [0, 1, 2, 3, 4, 5]
+            self.n_actions = len(self.action_space)
+            self.lr = 0.0001
+            self.beta = 0.01
+            self.E = 0.2
+            self.alpha = 0.1
+            self.n_workers = int(n_workers)
+            self.NMaxEp = NMaxEp
+            self.gamma = 0.99
+            self.lambda_ = 0.95
+            self.horizon = 32
+            self.EPOCHS = 4
+            self.HEIGHT = 96
+            self.WIDTH = 96
+            self.FRAME_SKIP = 4
+            self.STACK = 4
+            self.sticky_action = False
+            self.is_normalize_GAE = True
+            self.model = self.Model(self.HEIGHT, self.WIDTH, self.STACK)
+            self.old_model = self.Model(self.HEIGHT, self.WIDTH, self.STACK)
+            self.old_model.set_weights(self.model.get_weights())
+
+
+
+        def process_input(self, state):
+            state = cv2.cvtColor(state, cv2.COLOR_BGR2GRAY)
+            state = cv2.resize(state, (96, 96), interpolation=cv2.INTER_CUBIC)
+            state = state / 255.0
+            return state
+
+
+
+        def policy_loss(self, action, old_prediction):
+
+           E = self.E
+           beta = self.beta
+
+           def loss_fn(y_true, y_pred):
+
+                new_prediction = tf.clip_by_value(y_pred, 0.00001, 0.99999)
+                advantage = y_true
+                entropy = -tf.reduce_mean(tf.reduce_sum(y_pred * tf.log(y_pred), axis=1))
+                r = tf.exp(tf.log(action * new_prediction+float(1e-10)) -tf.log(action * old_prediction + float(1e-10)))
+                clip_r = tf.clip_by_value(r, clip_value_min=1 - E, clip_value_max=1 + E)
+                p1 = r * advantage
+                p2 = clip_r * advantage
+                policy_loss = -tf.reduce_mean(tf.reduce_sum(tf.minimum(p1, p2), axis=1))
+                loss = policy_loss - beta * entropy
+                return loss
+
+           return loss_fn
+
+
+        def value_loss(self):
+
+            def loss_fn(y_true, y_pred):
+                val_loss = 0.5 * tf.reduce_mean(tf.square(y_true - y_pred))
+                return val_loss
+
+            return loss_fn
+
+        def Model(self, height, width, stack):
+
+            state = k.layers.Input(shape=(height, width, stack))
+            action = k.layers.Input(shape=(self.n_actions,))
+            old_prediction = k.layers.Input(shape=(self.n_actions,))
+
+            conv1 = k.layers.Conv2D(32, kernel_size=(8, 8), strides=(4, 4),
+                                    kernel_initializer=k.initializers.glorot_normal(),
+                                    activation=k.activations.relu, padding='valid')(state)
+
+            conv2 = k.layers.Conv2D(64, kernel_size=(4, 4), strides=(2, 2),
+                                    kernel_initializer=k.initializers.glorot_normal(),
+                                    activation=k.activations.relu, padding='valid')(conv1)
+
+            conv3 = k.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1),
+                                    kernel_initializer=k.initializers.glorot_normal(),
+                                    activation=k.activations.relu, padding='valid')(conv2)
+
+            dense1 = k.layers.Flatten()(conv3)
+
+            dense2 = k.layers.Dense(512, activation=k.activations.relu,
+                                    kernel_initializer=k.initializers.glorot_normal(),
+                                    bias_initializer=k.initializers.glorot_normal())(dense1)
+
+            policy = k.layers.Dense(self.n_actions, activation=k.activations.softmax,
+                                    kernel_initializer=k.initializers.glorot_normal(),
+                                    bias_initializer=k.initializers.glorot_normal())(dense2)
+
+            value_state = k.layers.Dense(1, activation=None,
+                                         kernel_initializer=k.initializers.glorot_normal(),
+                                         bias_initializer=k.initializers.glorot_normal())(dense2)
+
+            model = k.Model(inputs=[state, old_prediction, action], outputs=[policy, value_state])
+
+            model.compile(optimizer=k.optimizers.Adam(lr=self.lr, epsilon=float(1e-5)),
+                          loss=[self.policy_loss(action, old_prediction), self.value_loss()],
+                          loss_weights=[1, 1])
+            model.summary()
+
+            return model
+
+        def train(self):
+
+            envs = [JoypadSpace(gym_super_mario_bros.make(self.game_name),SIMPLE_MOVEMENT) for i in range(self.n_workers)]
+            lock = threading.Lock()
+            workers = [threading.Thread(target=self.run_thread, daemon=True, args=(envs[i], i, lock)) for i in
+                       range(self.n_workers)]
+            for worker in workers:
+                worker.start()
+                time.sleep(0.1)
+            [worker.join() for worker in workers]
+
+        def get_action(self,probability):
+
+            action_one_hot = np.zeros([self.n_actions])
+            action = np.random.choice(self.action_space, 1, p=probability)[0]
+            action_one_hot[self.action_space.index(action)] = 1
+            return action_one_hot,action
+
+
+
+        def step(self, prev_action, action,prev_coins, env):
+
+                s_rewards, states = [], []
+                next_state, reward, done, info = np.empty([80, 80]), 0, False, {}
+
+                for i in range(self.FRAME_SKIP):
+
+                    if i == 0:
+
+                        if np.random.uniform(0, 1) <= 0.25 and self.sticky_action == True:
+
+                            next_state, reward, done, info = env.step(prev_action)
+
+                            if info['coins'] -prev_coins > 1:
+                                reward+=20
+                            s_rewards.append(reward)
+                            states.append(next_state)
+
+                        else:
+
+                            next_state, reward, done, info = env.step(action)
+                            if info['coins'] - prev_coins > 1:
+                                reward += 10
+                            s_rewards.append(reward)
+                            states.append(next_state)
+
+                    else:
+
+                        next_state, reward, done, info = env.step(action)
+
+                        if info['coins'] - prev_coins > 1:
+                            reward += 10
+                        s_rewards.append(reward)
+                        states.append(next_state)
+
+                    if done:
+                        s_rewards.append(-100)
+                        break
+
+                s_rewards = np.sum(s_rewards)/20.0
+
+                if len(states) >= 2:
+                     next_state = np.maximum(states[-1], states[-2])
+
+                return next_state, s_rewards, done, info, prev_coins
+
+
+
+        def run_thread(self, env, i, lock):
+
+            global EPISODE, running_score, G_t_step,max_x,max_score
+            flag, prev_action,  = False, 0
+
+            while EPISODE < self.NMaxEp :
+
+                EPISODE += 1
+                t_prev_update =0
+                t_step  = 0
+                score = 0
+                done = 0
+                x_pos = 0
+                level_complete = False
+                prev_coins = 0
+                state = self.process_input(env.reset())
+                state = np.stack([state] * 4, axis=2)
+                state_list, reward_list, action_list, done_list, probability_list = [], [], [], [], []
+
+                while not done :
+
+                    lock.acquire()
+
+                    t_step += 1
+                    G_t_step += 1
+                    probability = self.get_policy(np.expand_dims(state, axis=0), self.model)[0]
+
+
+                    if np.isnan(probability).any() == True:
+
+                        print('terminated for NaN values')
+                        flag = True
+                        break
+
+                    else:
+                        action_one_hot, action = self.get_action(probability)
+
+
+                    lock.release()
+
+                    next_state, reward, done, info,prev_coins = self.step(prev_action,action,prev_coins,env)
+
+                    next_state = self.process_input(next_state)
+                    next_state = np.append(state[:, :, 1:], np.expand_dims(next_state, axis=2), axis=2)
+
+                    if info['flag_get']:
+                        reward = 50
+                        level_complete =True
+
+                    state_list.append(state)
+                    reward_list.append(reward)
+                    action_list.append(action_one_hot)
+                    done_list.append(done)
+                    probability_list.append(probability)
+                    score += reward
+                    state = next_state
+                    prev_action = action
+
+                    if info['x_pos']>x_pos:
+                        x_pos = info['x_pos']
+
+                    if t_step - t_prev_update == self.horizon or done == True:
+
+                        state_list.append(state)
+                        lock.acquire()
+                        if len(action_list):
+                            self.update(state_list, action_list, reward_list, done_list)
+                        lock.release()
+                        state_list, action_list, reward_list, done_list = [], [], [], []
+                        t_prev_update = t_step
+
+                if max_score < score:
+                   max_score = score
+
+
+
+                lock.acquire()
+
+                if flag == False:
+
+                   running_score = 0.99 * running_score + 0.01 * score
+                   print('EPISODE : ', (EPISODE), 'G_tstep : ', (G_t_step), 'running score : ', (running_score),
+                      'score :',(score), 't_step : ', (t_step),'x_pos :',(x_pos),'max_score : ',(max_score), 'level_complete', (level_complete))
+
+                   if EPISODE % 50 == 0:
+                    self.model.save_weights('PPO_mario.h5')
+                    print('model saved to disc')
+
+                    if len(probability_list) >= 20:
+                      print(random.sample(probability_list, 20))
+
+                lock.release()
+
+        def GAE_and_TargetValues(self,V,rewards):
+
+            deltas, GAE = [], []
+            advantage = 0
+
+            for i in range(len(rewards)):
+                delta = rewards[i] + self.gamma * V[i + 1][0] - V[i][0]
+                deltas.append(delta)
+
+            for delta in reversed(deltas):
+                advantage = self.gamma * self.lambda_ * advantage + delta
+                GAE.append(advantage)
+
+            GAE = np.flip(GAE)
+
+            if self.is_normalize_GAE:
+                if np.std(GAE) != 0 and len(GAE) > 1:
+                    GAE = (GAE - np.mean(GAE)) / (np.std(GAE))
+
+            target_values = GAE+V[:-1]
+
+            return  GAE,target_values
+
+
+
+        def V_predict(self,states,done):
+            V = self.model.predict(
+                x=[states, np.zeros([len(states), self.n_actions]), np.zeros([len(states), self.n_actions])])[1]
+
+            if done[-1] == True:
+                V[-1][0] = 0
+
+            return V
+
+        def get_policy(self,states,model):
+            dummy = np.zeros([len(states), self.n_actions])
+            policy = np.clip(model.predict(x=[states,dummy,dummy])[0],0.00001,0.99999)
+            return policy
+
+
+
+        def update(self, states, actions, rewards, done ):
+
+            states = np.stack(states,axis=0)
+            actions = np.vstack(actions)
+            rewards=np.vstack(rewards)
+
+            V = self.V_predict(states,done)
+
+            GAE, target_values = self.GAE_and_TargetValues(V,rewards)
+
+            old_prediction = self.get_policy(states,self.old_model)
+
+            self.model.fit(x=[states[:-1],old_prediction[:-1],actions],y=[GAE,target_values],epochs=self.EPOCHS,verbose=0)
+
+            old_model_weights = np.array(self.model.get_weights())*0.1 + np.array(self.old_model.get_weights())*0.9
+
+            self.old_model.set_weights(old_model_weights)
+
+
+        def print_values(self,states,rewards,V,target_values,GAE,old_prediction,done):
+
+            print('states',(states))
+            print('rewards',(rewards))
+            print('V',(V))
+            print('target_values',(target_values))
+            print('gae',(GAE))
+            print('old',(old_prediction))
+            print('done',(done))
+
+        def test(self):
+
+            EPISODE = 0
+            self.model.load_weights('PPO_mario.h5')
+
+            while EPISODE < 20:
+
+                env = self.env
+                t_step = 0
+                score = 0
+                done = False
+                coins=0
+                prev_action = random.choice(self.action_space)
+
+
+                EPISODE += 1
+                state = self.process_input(env.reset())
+                state = np.stack([state] * self.STACK, axis=2)
+
+                while not done:
+
+                    env.render()
+
+                    t_step += 1
+                    probability = self.get_policy(np.expand_dims(state, axis=0), self.model)[0]
+
+                    if np.isnan(probability).any() == True:
+
+                        print('terminated for NaN values')
+                        break
+
+                    else:
+                        action_one_hot, action = self.get_action(probability)
+
+                    next_state, reward, done, info, coins = self.step(prev_action, action, coins,env)
+
+                    next_state = self.process_input(next_state)
+                    next_state = np.append(state[:, :, 1:], np.expand_dims(next_state, axis=2), axis=2)
+
+                    score += reward
+                    state = next_state
+                    prev_action = action
+
+                print('episode : ', (EPISODE), 'score : ', (score))
+
+
+
+agent = PPO_atari (game = 1, level = 1,n_workers=16 , NMaxEp=20000)
+agent.train()
+#agent.test()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
