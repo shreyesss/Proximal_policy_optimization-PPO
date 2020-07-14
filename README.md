@@ -19,15 +19,11 @@ Features:
 
 2.)Advangge calculation:
    (GAE_and_Targetvalues function)
+       
+       
        a.) GAE(generalized advantage estimate) is calculated using forward view bootstrapping with different optimum forward steps for different games
-       As a substitute to calculating GAE using masking I update the model at the end of each 'Life' in the game or after a fix number of time_steps(Horizon)
- 
-
-3.)No Normalization of GAE values:
- 
-Contrary to other imlementations I found  that normalization stableizes the training but slows it down a lot. hence for games time-independent and scarce rewards its better to not normalize GAE returns.
-
-Hence normalization of GAE values is used in time-dpendent reward environments of LunarLander and SuperMarioBros and its not used in Atari environments of Pong and Breakout
+       b.)As a substitute to calculating GAE using masking I update the model at the end of each 'Life' in the game or after a fix number of time_steps(Horizon
+       c.) Contrary to other imlementations I found  that normalization stableizes the training but slows it down a lot. hence for games time-independent and scarce rewards its        better to not normalize GAE returns.Hence normalization of GAE values is used in time-dpendent reward environments of LunarLander and SuperMarioBros and its not used in        Atari environments of Pong and Breakout
 
 
 4.)Soft-Update of old network:
@@ -41,7 +37,7 @@ The weights of the network providing the old policy undergo soft update with alp
      c.)LunarLander: crash landing is penalized by a reward of -5 , this has significantly imporved the later stages of training ie: the soft landing
 
 
-References:
+# References:
 
 Frame-skipping :
 
