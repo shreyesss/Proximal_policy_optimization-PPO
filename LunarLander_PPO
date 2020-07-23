@@ -1,0 +1,253 @@
+import tensorflow as tf
+from tensorflow import keras as k
+import numpy as np
+import threading
+import cv2
+import gym
+import random
+import time
+
+tf.enable_eager_execution()
+EPISODE, running_score, G_t_step = 0, 0, 0
+
+
+class PPO_lunarlander:
+
+    def __init__(self, lr, n_workers, NMaxEp, frequency):
+        self.lr = lr
+
+        self.game_name = 'LunarLander-v2'
+        self.env = gym.make(self.game_name).env
+        self.gamma = 0.99
+        self.lambda_ = 0.95
+        self.n_states = self.env.observation_space.shape[0]
+        self.n_actions = self.env.action_space.n
+        self.n_workers = n_workers
+        self.model = self.Model()
+        self.old_model = self.Model()
+        self.NMaxEp = NMaxEp
+        self.frequency = frequency
+        self.old_model.set_weights(self.model.get_weights())
+        self.dummy_action = np.zeros([1, self.n_actions])
+        self.dummy_old_prediction = np.zeros([1, self.n_actions])
+        self.is_normalize_GAE = True
+
+    def Model(self):
+        state = k.layers.Input(shape=(self.n_states,))
+        action = k.layers.Input(shape=(self.n_actions,))
+        old_prediction = k.layers.Input(shape=(self.n_actions,))
+
+        dense1 = k.layers.Dense(32, activation=k.activations.relu,
+                            kernel_initializer=k.initializers.glorot_normal(),
+                            bias_initializer=k.initializers.glorot_normal())(state)
+
+        dense2 = k.layers.Dense(64, activation=k.activations.relu,
+                            kernel_initializer=k.initializers.glorot_normal(),
+                            bias_initializer=k.initializers.glorot_normal())(dense1)
+
+        actions = k.layers.Dense(self.n_actions, activation=k.activations.softmax,
+                             kernel_initializer=k.initializers.glorot_normal(),
+                             bias_initializer=k.initializers.glorot_normal())(dense2)
+
+        value = k.layers.Dense(1, activation=None,
+                           kernel_initializer=k.initializers.glorot_normal(),
+                           bias_initializer=k.initializers.glorot_normal())(dense2)
+
+        model = k.Model(inputs=[state, old_prediction, action], outputs=[actions, value])
+
+        model.compile(optimizer=k.optimizers.RMSprop(lr=self.lr),
+                  loss=[self.policy_loss(action, old_prediction), self.value_loss()],
+                  loss_weights=[1, 1])
+
+        model.summary()
+        return model
+
+    def value_loss(self):
+
+        def loss_fn(y_true, y_pred):
+            val_loss = 0.5 * tf.reduce_mean(tf.square(y_true - y_pred))
+            return val_loss
+
+        return loss_fn
+
+    def policy_loss(self, action, old_prediction):
+
+        def loss_fn(y_true, y_pred):
+            E = 0.2
+            new_prediction = tf.clip_by_value(y_pred, 0.00001, 0.99999)
+            entropy = -tf.reduce_mean(tf.reduce_sum(y_pred * tf.log(y_pred), axis=1))
+            r = tf.exp(
+                tf.log(action * new_prediction + float(1e-10)) - tf.log(action * old_prediction + float(1e-10)))
+            clip_r = tf.clip_by_value(r, clip_value_min=1 - E, clip_value_max=1 + E)
+            p1 = r * y_true
+            p2 = clip_r * y_true
+            policy_loss = -tf.reduce_mean(tf.reduce_sum(tf.minimum(p1, p2), axis=1))
+            loss = policy_loss - 0.001 * entropy
+            return loss
+
+        return loss_fn
+
+    def train(self):
+        envs = [gym.make(self.game_name) for i in range(self.n_workers)]
+        lock = threading.Lock()
+        workers = [threading.Thread(target=self.run_thread, daemon=True, args=(envs[i], i, lock)) for i in
+                   range(self.n_workers)]
+        for worker in workers:
+            worker.start()
+            time.sleep(0.1)
+        [worker.join() for worker in workers]
+
+    def update(self, states, actions, rewards, done):
+        deltas, GAE, target_values = [], [], []
+        advantage = 0
+
+        states = np.vstack(states)
+        actions = np.vstack(actions)
+        rewards = np.vstack(rewards)
+
+        V = \
+            self.model.predict(
+                x=[states, np.zeros([len(states), self.n_actions]), np.zeros([len(states), self.n_actions])])[1]
+
+        if done[-1] == True:
+            V[-1][0] = 0
+
+        for i in range(len(rewards)):
+            delta = rewards[i] + self.gamma * V[i + 1][0] - V[i][0]
+            deltas.append(delta)
+
+        for delta in deltas:
+            advantage += self.gamma * self.lambda_ * delta
+            GAE.append(advantage)
+
+        GAE = np.flip(GAE)
+
+        if self.is_normalize_GAE:
+            if np.std(GAE) != 0 and len(GAE) > 1:
+                GAE = (GAE - np.mean(GAE)) / (np.std(GAE))
+
+        target_values = GAE + V[:-1]
+
+        old_prediction = self.old_model.predict(
+            x=[states, np.zeros([len(states), self.n_actions]), np.zeros([len(states), self.n_actions])])[0]
+
+        self.model.fit(x=[states[:-1], old_prediction[:-1], actions], y=[GAE, target_values], epochs=3, verbose=0)
+
+        new_weights = np.array(self.model.get_weights()) * 0.9 + np.array(self.old_model.get_weights()) * 0.1
+
+        self.old_model.set_weights(new_weights)
+
+    def run_thread(self, env, i, lock):
+        global EPISODE, running_score, G_t_step
+
+        while EPISODE < self.NMaxEp and running_score < 100:
+            EPISODE += 1
+            done = False
+            t_step, score, t = 0, 0, 0
+            state = env.reset()
+            state_list, reward_list, action_list, done_list, probability_list = [], [], [], [], []
+            while not done and t_step < 800:
+                lock.acquire()
+                t_step += 1
+                G_t_step += 1
+                action = np.zeros([self.n_actions])
+                probability = np.clip(
+                    self.model.predict([np.expand_dims(state, axis=0), self.dummy_old_prediction, self.dummy_action])[
+                        0][0],
+                    0.00001, 0.99999)
+
+                a = np.random.choice(self.n_actions, 1, p=probability)[0]
+                action[a] = 1
+                lock.release()
+                if i == 1:
+                    env.render()
+                next_state, reward, done, info = env.step(a)
+                next_state = next_state
+                reward = reward / 10.0
+                if done:
+                    reward = -10
+                state_list.append(state)
+                reward_list.append(reward)
+                action_list.append(action)
+                done_list.append(done)
+                probability_list.append(probability)
+                state = next_state
+                score += reward
+
+                if (t_step - t == self.frequency or done == True):
+                    state_list.append(state)
+                    lock.acquire()
+                    self.update(state_list, action_list, reward_list, done_list)
+                    lock.release()
+                    state_list, action_list, reward_list, done_list = [], [], [], []
+                    t = t_step
+
+            lock.acquire()
+            running_score = 0.95 * running_score + 0.05 * score
+            print('EPISODE : ', (EPISODE), 'G_tstep : ', (G_t_step), 'running score : ', (running_score),
+                  'score :',
+                  (score), 't_step : ', (t_step))
+            if EPISODE % 50 == 0:
+                self.model.save_weights('PPO_LunarLander.h5')
+                print('model saved to disc')
+                print(random.sample(probability_list, 20))
+            lock.release()
+
+    def test(self):
+        EPISODE = 0
+        self.model.load_weights('PPO_LunarLander.h5')
+        env = self.env
+
+        while EPISODE < 20:
+
+            t_step = 0
+            score = 0
+            done = False
+
+            EPISODE += 1
+            state = env.reset()
+
+            while not done:
+                env.render()
+
+                t_step += 1
+                probability = np.clip(self.model.predict(
+                    [np.expand_dims(state, axis=0), self.dummy_old_prediction, self.dummy_action])[0][0], 0.00001,
+                                      0.99999)
+
+                action = np.random.choice(self.n_actions, 1, p=probability)[0]
+
+                next_state, reward, done, info = env.step(action)
+
+                score += reward
+                state = next_state
+
+            print('episode : ', (EPISODE), 'score : ', (score))
+
+
+
+agent = PPO_lunarlander(lr=0.0005, n_workers=8, NMaxEp=20000, frequency=32)
+agent.train()
+# agent.test()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
