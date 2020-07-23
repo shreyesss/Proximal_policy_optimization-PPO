@@ -23,7 +23,7 @@ Features:
        
        a.) GAE(generalized advantage estimate) is calculated using forward view bootstrapping with different optimum forward steps for different games
        b.)As a substitute to calculating GAE using masking I update the model at the end of each 'Life' in the game or after a fix number of time_steps(Horizon
-       c.) Contrary to other imlementations I found  that normalization stableizes the training but slows it down a lot. hence for games time-independent and scarce rewards its        better to not normalize GAE returns.Hence normalization of GAE values is used in time-dpendent reward environments of LunarLander and SuperMarioBros and its not used in        Atari environments of Pong and Breakout
+       c.) Contrary to other imlementations I found  that normalization stableizes the training but slows it down a lot. Hence for games time-independent and scarce rewards its        better to not normalize GAE returns.Hence normalization of GAE values is used in time-dpendent reward environments of LunarLander and SuperMarioBros and its not used in        Atari environments of Pong and Breakout
 
 
 4.)Soft-Update of old network:
@@ -79,10 +79,11 @@ https://arxiv.org/pdf/1707.06347.pdf
 
 # REQUIREMENTS
   
-     1.) tensorflow-1.14
+     1.) tensorflow-gpu-1.14
      2.) python3
      3.) openai-gym
      4.) gym-super-mario-bros-7.3.2
+    
   
 
 
