@@ -53,16 +53,14 @@ class PPO_breakout:
             beta = self.beta
             E = self.E
 
-            def loss_fn(y_true, y_pred):
-                new_prediction = tf.clip_by_value(y_pred, 0.00001, 0.99999)
-                advantage = y_true
-                entropy = -tf.reduce_mean(tf.reduce_sum(y_pred * tf.log(y_pred), axis=1))
-                r = tf.exp(
-                    tf.log(action * new_prediction + float(1e-10)) - tf.log(action * old_prediction + float(1e-10)))
+            def loss_fn(advantage, policy):
+                r = tf.expand_dims(
+                    tf.reduce_sum(policy * action, axis=1) / tf.reduce_sum(old_prediction * action, axis=1), axis=1)
                 clip_r = tf.clip_by_value(r, clip_value_min=1 - E, clip_value_max=1 + E)
                 p1 = r * advantage
                 p2 = clip_r * advantage
                 policy_loss = -tf.reduce_mean(tf.reduce_sum(tf.minimum(p1, p2), axis=1))
+                entropy = -tf.reduce_mean(tf.reduce_sum(policy * tf.log(policy), axis=1))
                 loss = policy_loss - beta * entropy
                 return loss
 
@@ -107,7 +105,7 @@ class PPO_breakout:
 
             model.compile(optimizer=k.optimizers.Adam(lr=self.lr),
                           loss=[self.policy_loss(action,old_prediction),self.value_loss()],
-                          loss_weights=[1, 1])
+                          loss_weights=[1, 0.5])
 
             model.summary()
 
@@ -268,7 +266,7 @@ class PPO_breakout:
 
             if self.is_normalize_GAE:
                 if np.std(GAE) != 0 and len(GAE) > 1:
-                    GAE = (GAE - np.mean(GAE)) / (np.std(GAE))
+                    GAE = (GAE) / (np.std(GAE))
 
             target_values = GAE + V[:-1]
 
