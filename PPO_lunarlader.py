@@ -266,7 +266,7 @@ class PPO_lunarlander:
 agent1 = PPO_lunarlander(lr=0.0001, n_workers=16, NMaxEp=3000, frequency=64)
 #agent1.train()
 agent1.test()
-#EPISODE :  3000  total_frames :  355223  avg_score :  8.93  ep_score : 13.14  t_step :  600  max_score :  18.62  time_elapsed : 14.92     :    128
+
 
 
 
